@@ -10,10 +10,20 @@ load_dotenv()
 
 if not os.getenv("GOOGLE_API_KEY"):
     raise ValueError("GOOGLE_API_KEY is missing")
+# Use Flash-Lite for tool-calling agents and 3.6 Flash for report writing:
+
+# agent_llm = ChatGoogleGenerativeAI(
+#     model="gemini-3.5-flash-lite",
+#     max_retries=2
+# )
+
+# report_llm = ChatGoogleGenerativeAI(
+#     model="gemini-3.6-flash",
+#     max_retries=2
+# )
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-3.6-flash",
-    # temperature=0.2,
+    model="gemini-3.5-flash-lite",
     max_retries=2
 )
 
