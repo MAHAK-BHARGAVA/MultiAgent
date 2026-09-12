@@ -59,6 +59,8 @@ def scrape_url(url: str) -> str:
             return f"No readable content found at: {url}"
 
         return f"Source URL: {url}\n\n{content[:5000]}"
+    
+#    "The scraping operation is wrapped in exception handling. If a request-related error occurs, the tool returns an error message instead of allowing the exception to crash the whole scraping function."
 
     except requests.RequestException as error:
         return f"Could not scrape {url}: {error}"

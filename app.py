@@ -1,6 +1,12 @@
 import streamlit as st
 import time
-from agents import build_reader_agent, build_search_agent, writer_chain, critic_chain
+from agents import (
+    build_reader_agent,
+    build_search_agent,
+    writer_chain,
+    critic_chain,
+    revision_chain
+)
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -8,7 +14,7 @@ st.set_page_config(
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="collapsed",
-)
+)    
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -428,10 +434,11 @@ st.markdown("""
 <div class="hero">
     <div class="hero-eyebrow">Multi-Agent AI System</div>
     <h1>Research<span>Mind</span></h1>
-    <p class="hero-sub">
-        Four specialized AI agents collaborate — searching, scraping, writing,
-        and critiquing — to deliver a polished research report on any topic.
-    </p>
+   <p class="hero-sub">
+    A multi-stage AI research pipeline collaborates across searching,
+    scraping, writing, critiquing, and revision to deliver a polished
+    research report on any topic.
+</p>
 </div>
 <div class="divider"></div>
 """, unsafe_allow_html=True)
@@ -481,7 +488,7 @@ with col_pipeline:
     def s(step):
         if not r:
             return "waiting"
-        steps = ["search", "reader", "writer", "critic"]
+        steps = ["search", "reader", "writer", "critic","revision"]
         idx = steps.index(step)
         completed = list(r.keys())
         # figure out which steps are done
@@ -498,6 +505,12 @@ with col_pipeline:
     step_card("02", "Reader Agent",  s("reader"), "Scrapes & extracts deep content")
     step_card("03", "Writer Chain",  s("writer"), "Drafts the full research report")
     step_card("04", "Critic Chain",  s("critic"), "Reviews & scores the report")
+    step_card(
+    "05",
+    "Revision Chain",
+    s("revision"),
+    "Improves the report using critic feedback"
+)
 
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
@@ -514,26 +527,37 @@ if st.session_state.running and not st.session_state.done:
     results = {}
     topic_val = st.session_state.topic_input
 
-    # ── Step 1: Search ──
+       # ── Step 1: Search ──
     with st.spinner("🔍  Search Agent is working…"):
         search_agent = build_search_agent()
+
         sr = search_agent.invoke({
-            "messages": [("user", f"Find recent, reliable and detailed information about: {topic_val}")]
+            "messages": [
+                (
+                    "user",
+                    f"Find recent, reliable and detailed information about: {topic_val}"
+                )
+            ]
         })
+
         results["search"] = sr["messages"][-1].content
         st.session_state.results = dict(results)
-    st.rerun() if False else None   # keep inline for now
 
     # ── Step 2: Reader ──
     with st.spinner("📄  Reader Agent is scraping top resources…"):
         reader_agent = build_reader_agent()
+
         rr = reader_agent.invoke({
-            "messages": [("user",
-                f"Based on the following search results about '{topic_val}', "
-                f"pick the most relevant URL and scrape it for deeper content.\n\n"
-                f"Search Results:\n{results['search'][:800]}"
-            )]
+            "messages": [
+                (
+                    "user",
+                    f"Based on the following search results about '{topic_val}', "
+                    f"pick the most relevant URL and scrape it for deeper content.\n\n"
+                    f"Search Results:\n{results['search'][:800]}"
+                )
+            ]
         })
+
         results["reader"] = rr["messages"][-1].content
         st.session_state.results = dict(results)
 
@@ -543,10 +567,12 @@ if st.session_state.running and not st.session_state.done:
             f"SEARCH RESULTS:\n{results['search']}\n\n"
             f"DETAILED SCRAPED CONTENT:\n{results['reader']}"
         )
+
         results["writer"] = writer_chain.invoke({
             "topic": topic_val,
             "research": research_combined
         })
+
         st.session_state.results = dict(results)
 
     # ── Step 4: Critic ──
@@ -554,10 +580,24 @@ if st.session_state.running and not st.session_state.done:
         results["critic"] = critic_chain.invoke({
             "report": results["writer"]
         })
+
         st.session_state.results = dict(results)
 
+    # ── Step 5: Revision ──
+    with st.spinner("✨  Revision Chain is improving the report…"):
+        results["revision"] = revision_chain.invoke({
+            "topic": topic_val,
+            "research": research_combined,
+            "report": results["writer"],
+            "feedback": results["critic"]
+        })
+
+        st.session_state.results = dict(results)
+
+    # ── Pipeline completed ──
     st.session_state.running = False
     st.session_state.done = True
+
     st.rerun()
 
 
@@ -567,6 +607,7 @@ r = st.session_state.results
 if r:
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-heading">Results</div>', unsafe_allow_html=True)
+
 
     # Raw outputs in expanders
     if "search" in r:
@@ -580,18 +621,18 @@ if r:
                         f'<div class="result-content">{r["reader"]}</div></div>', unsafe_allow_html=True)
 
     # Final report
-    if "writer" in r:
-     with st.container(border=True):
-        st.markdown(
-            '<div class="panel-label orange">📝 Final Research Report</div>',
-            unsafe_allow_html=True
-        )
+    if "revision" in r:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="panel-label orange">📝 Final Research Report</div>',
+                unsafe_allow_html=True
+            )
 
-        st.markdown(r["writer"])
+        st.markdown(r["revision"])
 
         st.download_button(
             label="⬇ Download Report (.md)",
-            data=r["writer"],
+            data=r["revision"],
             file_name=f"research_report_{int(time.time())}.md",
             mime="text/markdown",
         )
